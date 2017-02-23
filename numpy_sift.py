@@ -133,9 +133,9 @@ class SIFTDescriptor(object):
         mag = np.sqrt(gx * gx + gy*gy)
         ori = np.arctan2(gy,gx)
         unnorm_desc = self.samplePatch(mag,ori)
-        unnorm_desc /= np.linalg.norm(unnorm_desc[:],2)
+        unnorm_desc /= np.linalg.norm(unnorm_desc.flatten(),2)
         unnorm_desc = np.clip(unnorm_desc, 0,self.maxBinValue);
-        unnorm_desc /= np.linalg.norm(unnorm_desc[:],2)
+        unnorm_desc /= np.linalg.norm(unnorm_desc.flatten(),2)
         if userootsift:
             unnorm_desc = np.sqrt(unnorm_desc / np.linalg.norm(unnorm_desc.flatten(),1))
         return np.clip(512. * unnorm_desc , 0, 255).astype(np.int32);
