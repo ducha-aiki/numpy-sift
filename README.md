@@ -5,3 +5,16 @@ The SIFT descriptor code is protected under a US Patent 6,711,293. A
 license MUST be obtained from the University of British Columbia for
 use of SIFT code, files numpy_sift.py, in commercial
 applications (see LICENSE.SIFT for details)
+
+Here are comparisons to the original Michal Perdoch implementation. 
+The benchmark is on W1BS dataset from [WxBS: Wide Baseline Stereo Generalizations](https://arxiv.org/abs/1504.06603.pdf) paper, figure 3. So there is no difference between versions in performance 
+   
+    ![geometry](img/G.png)
+    ![geometry](img/A.png)
+    ![geometry](img/S.png)
+    ![geometry](img/map2photo.png)
+    ![geometry](img/total.png)
+    
+Speed: 
+    0.00246 s per 65x65 patch - numpy SIFT
+    0.00028 s per 65x65 patch - C++ SIFT
