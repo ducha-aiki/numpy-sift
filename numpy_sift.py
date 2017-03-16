@@ -127,7 +127,7 @@ class SIFTDescriptor(object):
                 for o in range(ob):
                     desc[o,y,x] = np.sum(current_val * ori_weight_map[o,:,:])
         return desc
-    def describe(self,patch, userootsift = False):
+    def describe(self,patch, userootsift = False, flatten = True):
         norm_patch = self.photonorm(patch, binaryMask = self.binaryMask);
         gx,gy = self.getDerivatives(norm_patch)
         mag = np.sqrt(gx * gx + gy*gy)
@@ -138,4 +138,7 @@ class SIFTDescriptor(object):
         unnorm_desc /= np.linalg.norm(unnorm_desc.flatten(),2)
         if userootsift:
             unnorm_desc = np.sqrt(unnorm_desc / np.linalg.norm(unnorm_desc.flatten(),1))
-        return np.clip(512. * unnorm_desc , 0, 255).astype(np.int32);
+        if flatten:
+            return np.clip(512. * unnorm_desc , 0, 255).astype(np.int32);
+        else:
+            return np.clip(512. * unnorm_desc.flatten() , 0, 255).astype(np.int32);
