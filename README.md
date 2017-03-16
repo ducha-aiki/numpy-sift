@@ -14,7 +14,7 @@ Average performance on W1BS
 ![average](/img/total.png)
     
 Speed: 
-- 0.00246 s per 65x65 patch - numpy SIFT
+- 0.00187 s per 65x65 patch - numpy SIFT
 - 0.00028 s per 65x65 patch - C++ SIFT
 
 If you use this code for academic purposes, please cite the following paper:
