@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import time
 
 class SIFTDescriptor(object):
     """Class for computing SIFT descriptor of the square patch
@@ -60,6 +61,16 @@ class SIFTDescriptor(object):
         self.spatialBins = numSpatialBins
         self.precomp_bins,self.precomp_weights,self.mapping,self.mask = self.precomputebins()
         self.binaryMask = self.mask > 0
+        self.gx = np.zeros((patchSize,patchSize), dtype=np.float)
+        self.gy = np.zeros((patchSize,patchSize), dtype=np.float)
+        self.ori = np.zeros((patchSize,patchSize), dtype=np.float)
+        self.mag = np.zeros((patchSize,patchSize), dtype=np.float)
+        self.norm_patch = np.zeros((patchSize,patchSize), dtype=np.float)
+        ps = self.patchSize
+        sb = self.spatialBins
+        ob = self.orientationBins
+        self.desc = np.zeros((ob, sb , sb ), dtype = np.float)
+        return
     def CircularGaussKernel(self, kernlen=21):
         halfSize = kernlen / 2;
         r2 = halfSize*halfSize;
@@ -74,39 +85,34 @@ class SIFTDescriptor(object):
                 else:
                     kernel[y,x] = 0
         return kernel
-
     def photonorm(self, patch, binaryMask = None):
         if binaryMask is not None:
-            std1 = np.std(patch[binaryMask])
+            std1_coef = 50. /  np.std(patch[binaryMask])
             mean1 =  np.mean(patch[binaryMask])
         else:
-            std1 = np.std(patch)
+            std1_coef = 50. / np.std(patch)
             mean1 =  np.mean(patch)
-        if std1 <= 0.000001:
-            std1 = 1.0 
-        outpatch = 128. + 50.*(patch - mean1) / std1;
-        outpatch = np.clip(outpatch, 0.,255.);
-        return outpatch
+        if std1_coef >= 50. / 0.000001:
+            std1_coef = 50.0 
+        self.norm_patch = 128. + std1_coef * (patch - mean1);
+        self.norm_patch = np.clip(self.norm_patch, 0.,255.);
+        return
     def getDerivatives(self,image):
-        sh = image.shape
-        gx = np.zeros(sh, dtype=np.float)
-        gy = np.zeros(sh, dtype=np.float)
-        for y in range(sh[0]):
-            if y == 0:
-                gx[:,y] = image[:,1] - image[:,0]
-                gy[y,:] = image[1,:] - image[0,:]
-            elif y == sh[0] - 1:
-                gx[:,y] = image[:,-1] - image[:,-2]
-                gy[y,:] = image[-1,:] - image[-2,:]
-            else:
-                gy[y,:] = image[y+1,:] - image[y-1,:]
-                gx[:,y] = image[:,y+1] - image[:,y-1]    
-        return 0.5 * gx, 0.5 * gy
+        #[-1 1] kernel for borders
+        self.gx[:,0] = image[:,1] - image[:,0]
+        self.gy[0,:] = image[1,:] - image[0,:]
+        self.gx[:,-1] = image[:,-1] - image[:,-2]
+        self.gy[-1,:] = image[-1,:] - image[-2,:]
+        #[-1 0 1] kernel for the rest
+        self.gy[1:-2,:] = image[2:-1,:] - image[0:-3,:]
+        self.gx[:,1:-2] = image[:,2:-1] - image[:,0:-3]
+        self.gx *= 0.5
+        self.gy *= 0.5
+        return 
     def samplePatch(self,grad,ori):
         ps = self.patchSize
         sb = self.spatialBins
         ob = self.orientationBins
-        desc = np.zeros((ob, sb , sb ), dtype = np.float)
         o_big = float(ob) * (ori + 2.0*math.pi) / (2.0 * math.pi)
         bo0_big = np.floor(o_big)#.astype(np.int32)
         wo1_big = o_big - bo0_big;
@@ -114,31 +120,47 @@ class SIFTDescriptor(object):
         bo1_big = (bo0_big + 1.0) % ob;
         wo0_big = 1.0 - wo1_big;
         wo0_big *= grad;
+        wo0_big = np.maximum(0, wo0_big)
         wo1_big *= grad;
+        wo1_big = np.maximum(0, wo1_big)
         ori_weight_map = np.zeros((ob,ps,ps))
         for o in range(ob):
-            relevant0 = bo0_big == o
-            ori_weight_map[o,relevant0] = np.maximum(0,wo0_big[relevant0])
-            relevant1 = bo1_big == o
-            ori_weight_map[o,relevant1] += np.maximum(wo1_big[relevant1],0)
+            relevant0 = np.where(bo0_big == o)
+            ori_weight_map[o, relevant0[0], relevant0[1]] = wo0_big[relevant0[0], relevant0[1]]
+            relevant1 = np.where(bo1_big == o)
+            ori_weight_map[o, relevant1[0], relevant1[1]] += wo1_big[relevant1[0], relevant1[1]]     
         for y in range(sb):
             for x in range(sb):
-                current_val = self.mapping[y,x,:,:]
-                for o in range(ob):
-                    desc[o,y,x] = np.sum(current_val * ori_weight_map[o,:,:])
-        return desc
-    def describe(self,patch, userootsift = False, flatten = True):
-        norm_patch = self.photonorm(patch, binaryMask = self.binaryMask);
-        gx,gy = self.getDerivatives(norm_patch)
-        mag = np.sqrt(gx * gx + gy*gy)
-        ori = np.arctan2(gy,gx)
-        unnorm_desc = self.samplePatch(mag,ori)
-        unnorm_desc /= np.linalg.norm(unnorm_desc.flatten(),2)
-        unnorm_desc = np.clip(unnorm_desc, 0,self.maxBinValue);
-        unnorm_desc /= np.linalg.norm(unnorm_desc.flatten(),2)
+                self.desc[:,y,x] =  np.tensordot( ori_weight_map, self.mapping[y,x,:,:])
+        return
+    def describe(self,patch, userootsift = False, flatten = True, show_timings = False):
+        t = time.time()
+        self.photonorm(patch, binaryMask = self.binaryMask);
+        if show_timings:
+            print 'photonorm time = ', time.time() - t
+            t = time.time()
+        self.getDerivatives(self.norm_patch)
+        if show_timings:
+            print 'gradients time = ', time.time() - t
+            t = time.time()
+        self.mag = np.sqrt(self.gx * self.gx + self.gy*self.gy)
+        self.ori = np.arctan2(self.gy,self.gx)
+        if show_timings:
+            print 'mag + ori time = ', time.time() - t
+            t = time.time()
+        self.samplePatch(self.mag,self.ori)
+        if show_timings:
+            print 'sample patch time = ', time.time() - t
+            t = time.time()
+        self.desc /= np.linalg.norm(self.desc.flatten(),2)
+        self.desc = np.clip(self.desc, 0,self.maxBinValue);
+        self.desc /= np.linalg.norm(self.desc.flatten(),2)
         if userootsift:
-            unnorm_desc = np.sqrt(unnorm_desc / np.linalg.norm(unnorm_desc.flatten(),1))
+            self.desc = np.sqrt(self.desc / np.linalg.norm(unnorm_desc.flatten(),1))
+        if show_timings:
+            print 'clip and norm time = ', time.time() - t
+            t = time.time()
         if flatten:
-            return np.clip(512. * unnorm_desc.flatten() , 0, 255).astype(np.int32);
+            return np.clip(512. * self.desc.flatten() , 0, 255).astype(np.int32);
         else:
-            return np.clip(512. * unnorm_desc , 0, 255).astype(np.int32);
+            return np.clip(512. * self.desc , 0, 255).astype(np.int32);
