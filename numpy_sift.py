@@ -139,6 +139,6 @@ class SIFTDescriptor(object):
         if userootsift:
             unnorm_desc = np.sqrt(unnorm_desc / np.linalg.norm(unnorm_desc.flatten(),1))
         if flatten:
-            return np.clip(512. * unnorm_desc , 0, 255).astype(np.int32);
-        else:
             return np.clip(512. * unnorm_desc.flatten() , 0, 255).astype(np.int32);
+        else:
+            return np.clip(512. * unnorm_desc , 0, 255).astype(np.int32);
