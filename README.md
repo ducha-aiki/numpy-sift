@@ -8,13 +8,15 @@ applications (see LICENSE.SIFT for details)
 
 Here are comparisons to the original Michal Perdoch implementation. 
 The benchmark is on W1BS dataset from [WxBS: Wide Baseline Stereo Generalizations](https://arxiv.org/abs/1504.06603.pdf) paper, figure 3. So there is no difference between versions in performance 
-   
-    ![geometry](img/G.png)
-    ![geometry](img/A.png)
-    ![geometry](img/S.png)
-    ![geometry](img/map2photo.png)
-    ![geometry](img/total.png)
+
+Average performance on W1BS
+
+![average](/img/total.png)
     
 Speed: 
-    0.00246 s per 65x65 patch - numpy SIFT
-    0.00028 s per 65x65 patch - C++ SIFT
+- 0.00246 s per 65x65 patch - numpy SIFT
+- 0.00028 s per 65x65 patch - C++ SIFT
+
+If you use this code for academic purposes, please cite the following paper:
+
+    @article {tbd}
