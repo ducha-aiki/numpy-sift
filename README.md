@@ -15,7 +15,7 @@ The main difference is gaussian weighting window parameters.  MP version weights
 ![vlfeat kernel](/img/vlfeat_kernel.png)
 
 
-```
+
 Results:
 
 ![hpatches mathing results](/img/hpatches-results.png)
