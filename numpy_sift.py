@@ -25,7 +25,7 @@ class SIFTDescriptor(object):
             xi = int(x)
             # bin indices
             precomp_bins[i] = xi -1;
-            precomp_bins[i1] = xi 
+            precomp_bins[i1] = xi
             #bin weights
             precomp_weights[i1] = x - xi;
             precomp_weights[i] = 1.0 - precomp_weights[i1];
@@ -48,17 +48,38 @@ class SIFTDescriptor(object):
                 precomp_bin_weights_by_bx_py_px_mapping[precomp_bins[y+ps], precomp_bins[x], y, x ] += precomp_weights[y+ps]*precomp_weights[x]
                 precomp_bin_weights_by_bx_py_px_mapping[precomp_bins[y], precomp_bins[x+ps], y, x ] += precomp_weights[y]*precomp_weights[x+ps]
                 precomp_bin_weights_by_bx_py_px_mapping[precomp_bins[y+ps], precomp_bins[x+ps], y, x ] += precomp_weights[y+ps]*precomp_weights[x+ps]
-        mask =  self.CircularGaussKernel(kernlen=self.patchSize)
+        if self.mask_type == 'CircularGauss':
+            mask = self.CircularGaussKernel(kernlen=self.patchSize, circ=True, sigma_type=self.sigma_type).astype(np.float32)
+        elif self.mask_type == 'Gauss':
+            mask = self.CircularGaussKernel(kernlen=self.patchSize, circ=False, sigma_type=self.sigma_type).astype(np.float32)
+        else:
+            raise ValueError(masktype, 'is unknown mask type')
+
         for y in range(sb):
             for x in range(sb):
                 precomp_bin_weights_by_bx_py_px_mapping[y,x,:,:] *= mask
                 precomp_bin_weights_by_bx_py_px_mapping[y,x,:,:] = np.maximum(0,precomp_bin_weights_by_bx_py_px_mapping[y,x,:,:])
         return precomp_bins.astype(np.int32),precomp_weights,precomp_bin_weights_by_bx_py_px_mapping,mask
-    def __init__(self, patchSize = 41, maxBinValue = 0.2, numOrientationBins = 8, numSpatialBins = 4):
+    def __repr__(self):
+            return self.__class__.__name__ + '(' + 'orientationBins=' + str(self.orientationBins) +\
+             ', ' + 'spatialBins=' + str(self.spatialBins) +\
+             ', ' + 'patchSize=' + str(self.patchSize) +\
+             ', ' + 'sigma_type=' + str(self.sigma_type) +\
+             ', ' + 'mask_type=' + str(self.mask_type) +\
+             ', ' + 'maxBinValue=' + str(self.maxBinValue) + ')'
+
+    def __init__(self, patchSize = 41,
+                 maxBinValue = 0.2,
+                 numOrientationBins = 8,
+                 numSpatialBins = 4,
+                 mask_type = 'CircularGauss',
+                 sigma_type = 'hesamp'):
         self.patchSize = patchSize
         self.maxBinValue = maxBinValue
         self.orientationBins = numOrientationBins
         self.spatialBins = numSpatialBins
+        self.mask_type = mask_type
+        self.sigma_type = sigma_type
         self.precomp_bins,self.precomp_weights,self.mapping,self.mask = self.precomputebins()
         self.binaryMask = self.mask > 0
         self.gx = np.zeros((patchSize,patchSize), dtype=np.float)
@@ -71,19 +92,23 @@ class SIFTDescriptor(object):
         ob = self.orientationBins
         self.desc = np.zeros((ob, sb , sb ), dtype = np.float)
         return
-    def CircularGaussKernel(self, kernlen=21):
-        halfSize = kernlen / 2;
-        r2 = halfSize*halfSize;
-        sigma2 = 0.9 * r2;
+    def CircularGaussKernel(self,kernlen=21, circ = True, sigma_type = 'hesamp'):
+        halfSize = float(kernlen) / 2.;
+        r2 = float(halfSize**2);
+        if sigma_type == 'hesamp':
+            sigma_mul_2 = 0.9 * r2;
+        elif sigma_type == 'vlfeat':
+            sigma_mul_2 = kernlen**2
+        else:
+            raise ValueError('Unknown sigma_type', sigma_type, 'try hesamp or vlfeat')
         disq = 0;
         kernel = np.zeros((kernlen,kernlen))
         for y in range(kernlen):
             for x in range(kernlen):
-                disq = (y - halfSize)*(y - halfSize) +  (x - halfSize)*(x - halfSize);
-                if disq < r2:
-                    kernel[y,x] = math.exp(-disq / sigma2)
-                else:
-                    kernel[y,x] = 0
+                disq = (y - halfSize+0.5)**2 +  (x - halfSize+0.5)**2;
+                kernel[y,x] = math.exp(-disq / sigma_mul_2)
+                if circ and (disq >= r2):
+                    kernel[y,x] = 0.
         return kernel
     def photonorm(self, patch, binaryMask = None):
         if binaryMask is not None:
@@ -93,7 +118,7 @@ class SIFTDescriptor(object):
             std1_coef = 50. / np.std(patch)
             mean1 =  np.mean(patch)
         if std1_coef >= 50. / 0.000001:
-            std1_coef = 50.0 
+            std1_coef = 50.0
         self.norm_patch = 128. + std1_coef * (patch - mean1);
         self.norm_patch = np.clip(self.norm_patch, 0.,255.);
         return
@@ -108,7 +133,7 @@ class SIFTDescriptor(object):
         self.gx[:,1:-2] = image[:,2:-1] - image[:,0:-3]
         self.gx *= 0.5
         self.gy *= 0.5
-        return 
+        return
     def samplePatch(self,grad,ori):
         ps = self.patchSize
         sb = self.spatialBins
@@ -128,7 +153,7 @@ class SIFTDescriptor(object):
             relevant0 = np.where(bo0_big == o)
             ori_weight_map[o, relevant0[0], relevant0[1]] = wo0_big[relevant0[0], relevant0[1]]
             relevant1 = np.where(bo1_big == o)
-            ori_weight_map[o, relevant1[0], relevant1[1]] += wo1_big[relevant1[0], relevant1[1]]     
+            ori_weight_map[o, relevant1[0], relevant1[1]] += wo1_big[relevant1[0], relevant1[1]]
         for y in range(sb):
             for x in range(sb):
                 self.desc[:,y,x] =  np.tensordot( ori_weight_map, self.mapping[y,x,:,:])
@@ -137,20 +162,20 @@ class SIFTDescriptor(object):
         t = time.time()
         self.photonorm(patch, binaryMask = self.binaryMask);
         if show_timings:
-            print 'photonorm time = ', time.time() - t
+            print( 'photonorm time = ', time.time() - t)
             t = time.time()
         self.getDerivatives(self.norm_patch)
         if show_timings:
-            print 'gradients time = ', time.time() - t
+            print( 'gradients time = ', time.time() - t)
             t = time.time()
         self.mag = np.sqrt(self.gx * self.gx + self.gy*self.gy)
         self.ori = np.arctan2(self.gy,self.gx)
         if show_timings:
-            print 'mag + ori time = ', time.time() - t
+            print( 'mag + ori time = ', time.time() - t)
             t = time.time()
         self.samplePatch(self.mag,self.ori)
         if show_timings:
-            print 'sample patch time = ', time.time() - t
+            print( 'sample patch time = ', time.time() - t)
             t = time.time()
         self.desc /= np.linalg.norm(self.desc.flatten(),2)
         self.desc = np.clip(self.desc, 0,self.maxBinValue);
@@ -158,7 +183,7 @@ class SIFTDescriptor(object):
         if userootsift:
             self.desc = np.sqrt(self.desc / np.linalg.norm(unnorm_desc.flatten(),1))
         if show_timings:
-            print 'clip and norm time = ', time.time() - t
+            print( 'clip and norm time = ', time.time() - t)
             t = time.time()
         if flatten:
             return np.clip(512. * self.desc.flatten() , 0, 255).astype(np.int32);
